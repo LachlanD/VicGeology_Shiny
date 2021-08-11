@@ -27,8 +27,8 @@ shinyUI(fluidPage(
                       accept = c(".gpx")
                       
             ),
-            radioButtons("x_axis", label = "x-axis", choiceNames = c("distance (m)", "time"), choiceValues = c('d', 't'), inline = TRUE)
-            
+            radioButtons("x_axis", label = "x-axis", choiceNames = c("distance (m)", "time"), choiceValues = c('d', 't'), inline = TRUE),
+            withSpinner(uiOutput("info", inline = TRUE), size = 0.5, type = 8, proxy.height = 150)
         ),
         
         # Show a plot of the generated distribution
@@ -48,7 +48,7 @@ shinyUI(fluidPage(
     ),
     
     withSpinner(
-        plotOutput("elePlot", width='100%', brush = "plot_brush", dblclick = "plot_click")
+        plotOutput("elePlot", width='100%', brush = "plot_brush", dblclick = "plot_click"), type = 8
     ),
     
 ))

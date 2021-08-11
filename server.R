@@ -22,7 +22,7 @@ load("layer/geology_layer.RData")
 
 #Set system variable
 sf_use_s2(FALSE)
-
+origin <- "1980-05-05" #GPS Epoch
 
 shinyServer(function(input, output, session) {
     
@@ -37,14 +37,64 @@ shinyServer(function(input, output, session) {
     
     
     
-    #global click value maybe
-    x<-0
+    #Inputs work better as globals 
+    x <- 0
+    xmin <- 0
+    xmax <- 100
     
     # The selected file, if any
     userFile <- reactive({
         validate(need(input$gpx, message = FALSE))
         
         input$gpx
+    })
+    
+    start <- reactive({
+        validate(need(trail(), message = FALSE))
+        t<-trail()$time
+        input$x_axis
+        if(all(is.na(t)))
+        {
+            updateRadioButtons(
+                session, 
+                "x_axis", 
+                selected = 'd', 
+                choiceNames = c("distance (m)"), 
+                choiceValues = c('d'), 
+                inline = TRUE
+            )
+            start <- "time missing from gpx file"
+        } else {
+            updateRadioButtons(
+                session, 
+                "x_axis", 
+                selected = input$x_axis, 
+                choiceNames = c("distance (m)", "time"), 
+                choiceValues = c('d', 't'), 
+                inline = TRUE
+            )
+            start <- as.character(min(t, na.rm = TRUE))
+        }
+        start
+    })
+    
+    end <- reactive({
+        validate(need(trail(), message = FALSE))
+        t<-trail()$time
+        if(all(is.na(t)))
+        {
+            end <- " "
+        } else {
+            end <- as.character(max(t, na.rm = TRUE))
+        }
+        end
+    })
+    
+    total_distance <-reactive({
+        validate(need(trail(), message = FALSE))
+        t<-trail()
+        
+        t$Dis[nrow(t)]
     })
     
     #Load gpx file and calculate the cumulative distance
@@ -61,19 +111,21 @@ shinyServer(function(input, output, session) {
         trail$Dis <- as.numeric(cumsum(d[1,]))/1000
         
         # Update map
-        bb <- as.numeric(st_bbox(trail))
-        
-        t <- trail %>% 
-            st_combine() %>%
-            st_cast(to = "LINESTRING") %>%
-            st_sf()
-        
-        leafletProxy("main_map", session) %>%
-            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-            addPolylines(data = t)
+        # bb <- as.numeric(st_bbox(trail))
+        # 
+        # t <- trail %>% 
+        #     st_combine() %>%
+        #     st_cast(to = "LINESTRING") %>%
+        #     st_sf()
+        # 
+        # leafletProxy("main_map", session) %>%
+        #     fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+        #     addPolylines(data = t)
         
         trail
-    }) %>% debounce(500)
+    }) 
+    
+    trail_d <- debounce(trail, 500)
     
     cl <- reactive({
         validate(need(trail_grp(), message = FALSE))
@@ -87,7 +139,7 @@ shinyServer(function(input, output, session) {
     
     #Find the polygons that the gpx file pass through and group them into blocks
     trail_grp <- reactive({
-        validate(need(trail <- trail(), message = FALSE))
+        validate(need(trail <- trail_d(), message = FALSE))
         
         suppressMessages(trail<-sf::st_join(trail, gsf, join = st_nearest_feature))
         
@@ -106,24 +158,21 @@ shinyServer(function(input, output, session) {
         trail
     })
     
-    #trail_grp<-debounce(trail_g, 1000)
-    
-    
-    ## Moved inside the trail reactive
-    # When the gpx file is loaded update the map
-    #observe({
-    #    t <- trail()
-    #    bb <- as.numeric(st_bbox(t))
-    #    
-    #    t <- t %>% 
-    #        st_combine() %>%
-    #        st_cast(to = "LINESTRING") %>%
-    #        st_sf()
-    #    
-    #     leafletProxy("main_map", session) %>%
-    #         fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-    #         addPolylines(data = t)
-    # }, priority = 1)
+
+    #When the gpx file is loaded update the map
+    observe({
+       t <- trail()
+       bb <- as.numeric(st_bbox(t))
+
+       t <- t %>%
+           st_combine() %>%
+           st_cast(to = "LINESTRING") %>%
+           st_sf()
+
+        leafletProxy("main_map", session) %>%
+            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+            addPolylines(data = t)
+    }, priority = 1)
     
     # Pop up info window when the plot is double clicked
     observeEvent(input$plot_click, {
@@ -136,43 +185,86 @@ shinyServer(function(input, output, session) {
     # Update the the slider to match the input file and x-axis selection
     observe({
         t <- trail()
+        
         if(input$x_axis == 'd') {
             d <- t$Dis
-            updateSliderInput(session, "range",  value = c(0, ceiling(max(d))), max = ceiling(max(d)))
+            xmin <<- 0
+            print(7)
+            xmax <<- ceiling(max(d))
+            print(8)
         } else {
-            d <- range(t$time, na.rm = TRUE)
-            updateSliderInput(session, "range", value = d,min = d[1], max = d[2])
+            r <- range(t$time, na.rm = TRUE)
+            xmin <<- as.POSIXct.numeric(r[1], origin = origin)
+            xmin <<- as.POSIXct.numeric(r[2], origin = origin)
         }
+        
+        updateSliderInput(session, "range", value = c(xmin, xmax), max = xmax)
     })
+    
     
     #Zoom in when plot is brushed 
     observeEvent(input$plot_brush,{
         val<-input$plot_brush
+        t<-trail()
         
-        xmin<-val$xmin
-        xmax<-val$xmax
+        if(input$x_axis == 'd') {
+            print(1)
+            xmin <<- max(val$xmin, 0)
+            print(2)
+            xmax <<- min(val$xmax, max(t$Dis))
+            print(3)
+        } else {
+            r <- range(t$time, na.rm = TRUE)
+            xmin <<- as.POSIXct.numeric(max(val$xmin, r[1]),  origin = origin)
+            xmax <<- as.POSIXct.numeric(min(val$xmax, r[2]),  origin = origin)
+        }
         
         updateSliderInput(session, "range",  value = c(xmin,xmax))
     })
     
+    
+    observeEvent(input$x_axis, {
+        t <- trail()
+        if(input$x_axis == 'd') {
+            d <- t$Dis
+            xmin <<- 0
+            print(9)
+            xmax <<- ceiling(max(d))
+            print(10)
+        } else {
+            d <- range(t$time, na.rm = TRUE)
+            xmin <<- d[1]
+            xmin <<- d[2]
+        }
+        
+        updateSliderInput(session, "range",  value = c(xmin, xmax), max = xmax)
+    }, priority = 1)
+        
+        
+        
     #Update the plot when the selected range changes
     observeEvent(input$range, {
         validate(need(trail <- trail(), message = FALSE))
         
         t <- trail()
-        if( input$x_axis == 'd'){
-            A <- max(input$range[1], 0)
-            B <- min(input$range[2], max(t$Dis))
         
-            start <- st_coordinates(t[t$Dis >= A,][1,])
-            end <- st_coordinates(t[t$Dis >= B,][1,])
+        
+        if( input$x_axis == 'd'){
+            print(4)
+            xmin <<- max(input$range[1], 0)
+            print(5)
+            xmax <<- min(input$range[2], max(t$Dis))
+            print(6)
+        
+            start <- st_coordinates(t[t$Dis >= xmin,][1,])
+            end <- st_coordinates(t[t$Dis >= xmax,][1,])
         } else {
             r <- range(t$time, na.rm=TRUE)
-            A <- max(input$range[1], r[1])
-            B <- min(input$range[2], r[2])
+            xmin <<- max(input$range[1], r[1])
+            xmax <<- min(input$range[2], r[2])
             
-            start <- st_coordinates(t[t$time >= A,][1,])
-            end <- st_coordinates(t[t$time >= B,][1,])
+            start <- st_coordinates(t[t$time >= xmin,][1,])
+            end <- st_coordinates(t[t$time >= xmax,][1,])
         }
         
         
@@ -187,28 +279,31 @@ shinyServer(function(input, output, session) {
     # Render the geo plot
     output$elePlot <- renderPlot({
         validate(need(trail_grp(), message = FALSE))
-        validate(need(cl(), message = FALSE))
+        validate(need(input$range, message = FALSE))
+        
         session$resetBrush("plot_brush")
         
-        A <- input$range[1]
-        B <- input$range[2]
         t <- trail_grp()
         
-        
+        print(11)
         if(input$x_axis == 'd') {
-            ggplot(data = t, aes(fill=NAME, group = GEO_GRP)) + 
+            gg <- ggplot(data = t, aes(fill=NAME, group = GEO_GRP)) + 
                 geom_ribbon(aes(x=Dis, ymin=-10, ymax=ele)) + 
                 theme(legend.position="bottom", legend.direction = "vertical") + 
                 labs(x ="Distance (m)", y = "Elevation (m)") +
-                xlim(A,B) + scale_fill_manual(values = cl())
+                xlim(xmin, xmax) + 
+                scale_fill_manual(values = cl())
         } else {
             geo <- t[!is.na(t$time),]
-            ggplot(data = t, aes(fill=NAME, group = GEO_GRP)) + 
-                geom_ribbon(aes(x=time, ymin=-10, ymax=ele)) + 
+            gg <- ggplot(data = t, aes(fill=NAME, group = GEO_GRP)) + 
+                geom_ribbon(aes(x=as.POSIXct.numeric(time, origin = origin), ymin=-10, ymax=ele)) + 
                 theme(legend.position="bottom", legend.direction = "vertical") + 
                 labs(x ="Time", y = "Elevation (m)") +
-                xlim(A,B)
+                scale_x_datetime(date_labels = "%H:%M:%s",limits = as.POSIXct.numeric(c(xmin, xmax), origin = origin))  + 
+                scale_fill_manual(values = cl())
         }
+        print(12)
+        gg
     })
     
     # Pop window
@@ -225,15 +320,18 @@ shinyServer(function(input, output, session) {
         }
         
         
-        lo <- leafletOutput("pop_map")
+        leaf_out <- leafletOutput("pop_map")
         
-        if(!is.null(lo)){
+        if(!is.null(leaf_out)){
             modalDialog(
-                tags$div(tags$b("Name: "), dat$NAME, tags$br(), tags$b("Lithology: "), dat$LITHOLOGY, tags$br(), tags$b("Description: "), dat$DESC, tags$br(), tags$b("History: "), dat$GEOLHIST),
+                tags$div(tags$b("Name: "), dat$NAME, tags$br(), 
+                         tags$b("Lithology: "), dat$LITHOLOGY, tags$br(), 
+                         tags$b("Description: "), dat$DESC, tags$br(), 
+                         tags$b("History: "), dat$GEOLHIST),
+                leaf_out,
                 
-                lo,
-                
-                tags$a(href=dat$SPECIF_URI, "Geology Vic URI", target="_blank")
+                tags$a(href=dat$SPECIF_URI, "Geology Vic URI", target="_blank"),
+                easyClose = TRUE
         )}
     }
     
@@ -269,6 +367,14 @@ shinyServer(function(input, output, session) {
             fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
             addPolygons(data = poly, fillColor = as.character(cl()[dat$NAME[1]]), fillOpacity =  0.3, stroke = FALSE) %>%
             addPolylines(data = line)  
+    })
+    
+    output$info <- renderUI({ 
+        validate(need(start(), message = FALSE), need(end(), message = FALSE), need(total_distance(), message = FALSE))
+        
+        tags$div(tags$b("Start: "), start(), tags$br(), 
+                 tags$b("End: "), end(), tags$br(), 
+                 tags$b("Total distance: "), round(total_distance()), "m")
     })
     
     output$main_map <- renderLeaflet(map)
