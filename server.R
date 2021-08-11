@@ -60,8 +60,20 @@ shinyServer(function(input, output, session) {
         d<-sf::st_distance(trail)
         trail$Dis <- as.numeric(cumsum(d[1,]))/1000
         
+        # Update map
+        bb <- as.numeric(st_bbox(trail))
+        
+        t <- trail %>% 
+            st_combine() %>%
+            st_cast(to = "LINESTRING") %>%
+            st_sf()
+        
+        leafletProxy("main_map", session) %>%
+            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+            addPolylines(data = t)
+        
         trail
-    })
+    }) %>% debounce(500)
     
     cl <- reactive({
         validate(need(trail_grp(), message = FALSE))
@@ -94,20 +106,24 @@ shinyServer(function(input, output, session) {
         trail
     })
     
+    #trail_grp<-debounce(trail_g, 1000)
+    
+    
+    ## Moved inside the trail reactive
     # When the gpx file is loaded update the map
-    observe({
-        t <- trail()
-        bb <- as.numeric(st_bbox(t))
-        
-        t <- t %>% 
-            st_combine() %>%
-            st_cast(to = "LINESTRING") %>%
-            st_sf()
-        
-        leafletProxy("main_map", session) %>%
-            fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-            addPolylines(data = t)
-    }, priority = 1)
+    #observe({
+    #    t <- trail()
+    #    bb <- as.numeric(st_bbox(t))
+    #    
+    #    t <- t %>% 
+    #        st_combine() %>%
+    #        st_cast(to = "LINESTRING") %>%
+    #        st_sf()
+    #    
+    #     leafletProxy("main_map", session) %>%
+    #         fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
+    #         addPolylines(data = t)
+    # }, priority = 1)
     
     # Pop up info window when the plot is double clicked
     observeEvent(input$plot_click, {
