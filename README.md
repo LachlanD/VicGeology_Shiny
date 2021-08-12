@@ -13,4 +13,4 @@ Zoom into parts of the plot by adjusting the slider or by highlighting a section
 
 Double clicking on each geology block will open a window showing the track section, the geological unit extent, and a summary of the sections geology.
 
-###Link: [Victoria Shiny Geology](https://lachland.shinyapps.io/VicGeology_Shiny/)
+### Link: [Victoria Shiny Geology](https://lachland.shinyapps.io/VicGeology_Shiny/)
