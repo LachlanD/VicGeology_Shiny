@@ -1,4 +1,4 @@
-# [Vic Geology_Shiny](https://lachland.shinyapps.io/VicGeology_Shiny/)
+# [Victoria Geology Shiny](https://lachland.shinyapps.io/VicGeology_Shiny/)
 Shiny R app which takes a gpx file and shows the Victorian geology which the track crosses.
 
 Some gpx files contain time, in which case the plot can show either distance or time if not it will revert to time.
