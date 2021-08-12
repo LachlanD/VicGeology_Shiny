@@ -1,7 +1,9 @@
 # [Victoria Shiny Geology](https://lachland.shinyapps.io/VicGeology_Shiny/)
 Shiny R app which takes a gpx file and shows the Victorian geology which the track crosses.
 
-Some gpx files contain time, in which case the plot can show either distance or time if not it will revert to time.
+GPX track files can be expoted from here: [https://www.trailhiking.com.au/map-view-victoria/](https://www.trailhiking.com.au/map-view-victoria/)
+
+Some gpx files contain time, in which case the plot can use either distance or time as the x-axis.
 
 ![xaxis](https://github.com/LachlanD/VicGeology_Shiny/blob/main/img/xaxis.PNG?raw=true)
 
