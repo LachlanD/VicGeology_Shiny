@@ -15,6 +15,7 @@ library(sf)
 library(grid)
 library(gridExtra)
 library(viridis)
+library(zoo)
 
 
 #Too big to preload load dynamically instead
@@ -22,14 +23,14 @@ load("layer/geology_layer.RData")
 
 #Set system variable
 sf_use_s2(FALSE)
-origin <- "1980-05-05" #GPS Epoch
+origin <- "1970-01-01" #R Epoch
 
 shinyServer(function(input, output, session) {
     
     #Main map initialise on Vic
     map <- leaflet() %>%
         addTiles() %>%
-        fitBounds(lng1 = 140.1, lng2 = 150.2, lat1 = -34.8, lat2 = -38.5)
+        fitBounds(lng1 = 140.1, lng2 = 150.2, lat1 = -34.9, lat2 = -38.5)
     
     #Map for pop up windows
     pop_map <- leaflet() %>% 
@@ -41,6 +42,7 @@ shinyServer(function(input, output, session) {
     x <- 0
     xmin <- 0
     xmax <- 100
+    x_axis <- 'd'
     
     # The selected file, if any
     userFile <- reactive({
@@ -52,28 +54,11 @@ shinyServer(function(input, output, session) {
     start <- reactive({
         validate(need(trail(), message = FALSE))
         t<-trail()$time
-        input$x_axis
         if(all(is.na(t)))
         {
-            updateRadioButtons(
-                session, 
-                "x_axis", 
-                selected = 'd', 
-                choiceNames = c("distance (m)"), 
-                choiceValues = c('d'), 
-                inline = TRUE
-            )
             start <- "time missing from gpx file"
         } else {
-            updateRadioButtons(
-                session, 
-                "x_axis", 
-                selected = input$x_axis, 
-                choiceNames = c("distance (m)", "time"), 
-                choiceValues = c('d', 't'), 
-                inline = TRUE
-            )
-            start <- as.character(min(t, na.rm = TRUE))
+            start <- as.character(as.POSIXct(min(t, na.rm = TRUE), origin = origin))
         }
         start
     })
@@ -85,17 +70,24 @@ shinyServer(function(input, output, session) {
         {
             end <- " "
         } else {
-            end <- as.character(max(t, na.rm = TRUE))
+            end <- as.character(as.POSIXct(max(t, na.rm = TRUE), origin = origin))
         }
         end
     })
     
-    total_distance <-reactive({
+    total_distance <- reactive({
         validate(need(trail(), message = FALSE))
         t<-trail()
         
         t$Dis[nrow(t)]
     })
+    
+    ele_colour <- reactive({
+        validate(need(trail <- trail_d(), message = FALSE))
+        
+        viridis(max(trail$ele, na.rm = TRUE)-min(trail$ele, na.rm = TRUE), direction = -1, option = "plasma")  
+    })
+        
     
     #Load gpx file and calculate the cumulative distance
     trail <- reactive({
@@ -104,23 +96,30 @@ shinyServer(function(input, output, session) {
         trail <- data.frame()
         trail <- sf::st_read(userFile()$datapath, layer = "track_points", quiet = TRUE)
         
-        #remove bad points
-        #trail <- trail[!is.na(trail$time),]
-        
         d<-sf::st_distance(trail)
         trail$Dis <- as.numeric(cumsum(d[1,]))/1000
+        if(!all(is.na(trail$time))) {
+            trail$time <- na.approx(as.numeric(trail$time))
+            updateRadioButtons(
+                session, 
+                "x_axis", 
+                selected = x_axis, 
+                choiceNames = c("distance (m)", "time"), 
+                choiceValues = c('d', 't'), 
+                inline = TRUE
+            )
+        } else {
+            x_axis <<- 'd'
+            updateRadioButtons(
+                session, 
+                "x_axis", 
+                selected = 'd', 
+                choiceNames = c("distance (m)"), 
+                choiceValues = c('d'), 
+                inline = TRUE
+            )
+        }
         
-        # Update map
-        # bb <- as.numeric(st_bbox(trail))
-        # 
-        # t <- trail %>% 
-        #     st_combine() %>%
-        #     st_cast(to = "LINESTRING") %>%
-        #     st_sf()
-        # 
-        # leafletProxy("main_map", session) %>%
-        #     fitBounds(lng1 = bb[1], lng2 = bb[3], lat1 = bb[2], lat2 = bb[4]) %>%
-        #     addPolylines(data = t)
         
         trail
     }) 
@@ -158,6 +157,28 @@ shinyServer(function(input, output, session) {
         trail
     })
     
+    observeEvent(input$x_axis,{
+        x_axis <<- input$x_axis
+        
+        t <- trail()
+        
+        if(x_axis == 'd') {
+            d <- t$Dis
+            xmin <<- 0
+            xmax <<- ceiling(max(d))
+            updateSliderInput(session, "range", value = c(xmin, xmax), min = 0, max = xmax)
+        } else {
+            xmin <<- min(t$time, na.rm = TRUE)
+            xmax <<- max(t$time, na.rm = TRUE)
+            updateSliderInput(session, 
+                              "range",  
+                              value = as.POSIXct(c(xmin, xmax), origin = origin), 
+                              min = as.POSIXct(xmin, origin = origin),
+                              max = as.POSIXct(xmax, origin = origin))
+        }
+        
+    })
+    
 
     #When the gpx file is loaded update the map
     observe({
@@ -186,82 +207,56 @@ shinyServer(function(input, output, session) {
     observe({
         t <- trail()
         
-        if(input$x_axis == 'd') {
+        if(x_axis == 'd') {
             d <- t$Dis
             xmin <<- 0
-            print(7)
             xmax <<- ceiling(max(d))
-            print(8)
+            updateSliderInput(session, "range", value = c(xmin, xmax), min = 0, max = xmax)
         } else {
-            r <- range(t$time, na.rm = TRUE)
-            xmin <<- as.POSIXct.numeric(r[1], origin = origin)
-            xmin <<- as.POSIXct.numeric(r[2], origin = origin)
+            xmin <<- min(t$time, na.rm = TRUE)
+            xmax <<- max(t$time, na.rm = TRUE)
+            updateSliderInput(session, 
+                              "range",  
+                              value = as.POSIXct(c(xmin, xmax), origin = origin), 
+                              min = as.POSIXct(xmin, origin = origin),
+                              max = as.POSIXct(xmax, origin = origin))
         }
-        
-        updateSliderInput(session, "range", value = c(xmin, xmax), max = xmax)
     })
     
     
     #Zoom in when plot is brushed 
     observeEvent(input$plot_brush,{
         val<-input$plot_brush
-        t<-trail()
+        t<-trail_d()
         
-        if(input$x_axis == 'd') {
-            print(1)
+        if(x_axis == 'd') {
             xmin <<- max(val$xmin, 0)
-            print(2)
             xmax <<- min(val$xmax, max(t$Dis))
-            print(3)
+            updateSliderInput(session, "range",  value = c(xmin,xmax))
         } else {
             r <- range(t$time, na.rm = TRUE)
-            xmin <<- as.POSIXct.numeric(max(val$xmin, r[1]),  origin = origin)
-            xmax <<- as.POSIXct.numeric(min(val$xmax, r[2]),  origin = origin)
+            xmin <<- max(as.numeric(val$xmin), min(t$time, na.rm = TRUE))
+            xmax <<- min(as.numeric(val$xmax), max(t$time, na.rm = TRUE))
+            updateSliderInput(session, "range", value = as.POSIXct(c(xmin, xmax), origin = origin))
         }
-        
-        updateSliderInput(session, "range",  value = c(xmin,xmax))
     })
     
-    
-    observeEvent(input$x_axis, {
-        t <- trail()
-        if(input$x_axis == 'd') {
-            d <- t$Dis
-            xmin <<- 0
-            print(9)
-            xmax <<- ceiling(max(d))
-            print(10)
-        } else {
-            d <- range(t$time, na.rm = TRUE)
-            xmin <<- d[1]
-            xmin <<- d[2]
-        }
-        
-        updateSliderInput(session, "range",  value = c(xmin, xmax), max = xmax)
-    }, priority = 1)
-        
-        
-        
+
     #Update the plot when the selected range changes
     observeEvent(input$range, {
-        validate(need(trail <- trail(), message = FALSE))
-        
+        validate(need(trail <- trail(), message = FALSE),need(input$range, message = FALSE))
         t <- trail()
         
-        
-        if( input$x_axis == 'd'){
-            print(4)
+        if(x_axis == 'd'){
             xmin <<- max(input$range[1], 0)
-            print(5)
             xmax <<- min(input$range[2], max(t$Dis))
-            print(6)
-        
+
             start <- st_coordinates(t[t$Dis >= xmin,][1,])
             end <- st_coordinates(t[t$Dis >= xmax,][1,])
         } else {
-            r <- range(t$time, na.rm=TRUE)
-            xmin <<- max(input$range[1], r[1])
-            xmax <<- min(input$range[2], r[2])
+            
+            xmin <<- max(as.numeric(input$range[1]), min(t$time, na.rm = TRUE))
+            xmax <<- min(as.numeric(input$range[2]), max(t$time, na.rm = TRUE))
             
             start <- st_coordinates(t[t$time >= xmin,][1,])
             end <- st_coordinates(t[t$time >= xmax,][1,])
@@ -285,8 +280,7 @@ shinyServer(function(input, output, session) {
         
         t <- trail_grp()
         
-        print(11)
-        if(input$x_axis == 'd') {
+        if(x_axis == 'd') {
             gg <- ggplot(data = t, aes(fill=NAME, group = GEO_GRP)) + 
                 geom_ribbon(aes(x=Dis, ymin=-10, ymax=ele)) + 
                 theme(legend.position="bottom", legend.direction = "vertical") + 
@@ -296,13 +290,12 @@ shinyServer(function(input, output, session) {
         } else {
             geo <- t[!is.na(t$time),]
             gg <- ggplot(data = t, aes(fill=NAME, group = GEO_GRP)) + 
-                geom_ribbon(aes(x=as.POSIXct.numeric(time, origin = origin), ymin=-10, ymax=ele)) + 
+                geom_ribbon(aes(x = as.POSIXct(time, origin = origin, tz = "Australia/Victoria"), ymin=-10, ymax=ele)) + 
                 theme(legend.position="bottom", legend.direction = "vertical") + 
                 labs(x ="Time", y = "Elevation (m)") +
-                scale_x_datetime(date_labels = "%H:%M:%s",limits = as.POSIXct.numeric(c(xmin, xmax), origin = origin))  + 
+                xlim(as.POSIXct(xmin, origin = origin, tz = "Australia/Victoria"), as.POSIXct(xmax, origin = origin, tz = "Australia/Victoria"))  + 
                 scale_fill_manual(values = cl())
         }
-        print(12)
         gg
     })
     
@@ -313,7 +306,7 @@ shinyServer(function(input, output, session) {
         c <- input$plot_click
         
         
-        if(input$x_axis == 'd'){
+        if(x_axis == 'd'){
             dat <- t[t$Dis>=x,][1,]
         } else {
             dat <- t[t$time>=x,][1,]
@@ -325,12 +318,16 @@ shinyServer(function(input, output, session) {
         if(!is.null(leaf_out)){
             modalDialog(
                 tags$div(tags$b("Name: "), dat$NAME, tags$br(), 
+                         tags$b("Type: "), dat$GEOLUT, tags$br(),
+                         tags$b("Rank: "), dat$RANK, tags$br(),
                          tags$b("Lithology: "), dat$LITHOLOGY, tags$br(), 
                          tags$b("Description: "), dat$DESC, tags$br(), 
                          tags$b("History: "), dat$GEOLHIST),
                 leaf_out,
                 
-                tags$a(href=dat$SPECIF_URI, "Geology Vic URI", target="_blank"),
+                tags$a(href=dat$REPLIT_URI, "Lithology", target="_blank"),
+                tags$a(href=dat$GEOLUT_URI, "Formation", target="_blank"),
+                tags$a(href=dat$REPAGE_URI, "Age", target="_blank"),
                 easyClose = TRUE
         )}
     }
@@ -340,7 +337,7 @@ shinyServer(function(input, output, session) {
         
         t <- trail_grp()
         
-        if(input$x_axis == 'd'){
+        if(x_axis == 'd'){
             dat <- t[t$Dis>=x,][1,]
         } else {
             dat <- t[t$time>=x,][1,]
