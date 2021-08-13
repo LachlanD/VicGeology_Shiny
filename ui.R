@@ -51,4 +51,7 @@ shinyUI(fluidPage(
         plotOutput("elePlot", width='100%', brush = "plot_brush", dblclick = "plot_click"), type = 8
     ),
     
+    tags$a(href="https://github.com/LachlanD/VicGeology_Shiny", "Source Code: github.com/LachlanD/VicGeology_Shiny", target="_blank"),
+    tags$br(),
+    tags$a(href="https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000", "Data Source: discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000", target="_blank"),
 ))
