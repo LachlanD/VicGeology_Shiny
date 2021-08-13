@@ -16,4 +16,4 @@ Double clicking on each geology block will open a window showing the track secti
 ### Link: [Victoria Shiny Geology](https://lachland.shinyapps.io/VicGeology_Shiny/)
 #### [LICENSE](https://github.com/LachlanD/VicGeology_Shiny/blob/main/LICENSE)
 #### Data Source: [https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000](https://discover.data.vic.gov.au/dataset/geological-units-represented-as-two-dimensional-polygons-1-250-000)
-[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/)
+[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/legalcode)
